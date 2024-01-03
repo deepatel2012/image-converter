@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Converter</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js"></script>
+</head>
+<body>
+
+<h1>Image Converter</h1>
+
+<input type="file" id="fileInput" multiple webkitdirectory directory>
+<button onclick="convertImages()">Convert Images</button>
+<button onclick="downloadZip()">Download Zip</button>
+
+<div id="output"></div>
+<div id="loading" style="display: none;">Converting...</div>
+<div id="convertedCount">Files Converted: 0</div>
+
+<script>
+let convertedFilesCount = 0;
+
+function showLoading() {
+    document.getElementById('loading').style.display = 'block';
+}
+
+function hideLoading() {
+    document.getElementById('loading').style.display = 'none';
+}
+
+function updateConvertedCount() {
+    document.getElementById('convertedCount').textContent = `Files Converted: ${convertedFilesCount}`;
+}
+
+function convertImages() {
+    const fileInput = document.getElementById('fileInput');
+    const outputDiv = document.getElementById('output');
+    
+    showLoading(); // Show loading indicator
+    convertedFilesCount = 0;
+    updateConvertedCount(); // Reset converted files count
+    
+    outputDiv.innerHTML = ''; // Clear previous output
+
+    const promises = [];
+
+    for (const item of fileInput.files) {
+        if (item.type.startsWith('image/')) {
+            const pathArray = item.webkitRelativePath.split('/');
+            const fileName = pathArray.pop();
+            const folderPath = pathArray.join('/');
+
+            promises.push(convertAndDisplay(item, folderPath, fileName));
+        } else {
+            const errorMessage = document.createElement('p');
+            errorMessage.textContent = `Error: ${item.name} is not an image file.`;
+            outputDiv.appendChild(errorMessage);
+        }
+    }
+
+    Promise.all(promises)
+        .then(() => {
+            hideLoading(); // Hide loading indicator
+        })
+        .catch((error) => {
+            console.error('Error converting images:', error);
+            hideLoading(); // Hide loading indicator in case of an error
+        });
+}
+
+function convertAndDisplay(file, folderPath, fileName) {
+    return new Promise((resolve) => {
+        const reader = new FileReader();
+
+        reader.onload = function (e) {
+            const img = new Image();
+            img.src = e.target.result;
+
+            img.onload = function () {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.drawImage(img, 0, 0, img.width, img.height);
+
+                const convertedDataURL = canvas.toDataURL('image/png');
+
+                const downloadLink = document.createElement('a');
+                downloadLink.href = convertedDataURL;
+
+                // Maintain the folder structure and original name
+                downloadLink.download = `${folderPath ? folderPath + '/' : ''}${fileName.replace(/\.[^/.]+$/, "")}.png`;
+                downloadLink.textContent = `Download ${file.name} (PNG)`;
+
+                document.getElementById('output').appendChild(downloadLink);
+                document.getElementById('output').appendChild(document.createElement('br'));
+
+                convertedFilesCount++;
+                updateConvertedCount(); // Update converted files count
+
+                resolve();
+            };
+        };
+
+        reader.readAsDataURL(file);
+    });
+}
+
+function downloadZip() {
+    showLoading(); // Show loading indicator
+
+    const zip = new JSZip();
+    const promises = [];
+
+    function processFile(file, folderPath, fileName) {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const img = new Image();
+                img.src = e.target.result;
+
+                img.onload = function () {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0, img.width, img.height);
+
+                    const convertedDataURL = canvas.toDataURL('image/png');
+                    const uint8Array = dataURLToUint8Array(convertedDataURL);
+
+                    // Maintain the folder structure and original name in the zip file
+                    const zipPath = `${folderPath ? folderPath + '/' : ''}${fileName.replace(/\.[^/.]+$/, "")}.png`;
+                    zip.file(zipPath, uint8Array, { binary: true });
+
+                    convertedFilesCount++;
+                    updateConvertedCount(); // Update converted files count
+
+                    resolve();
+                };
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    for (const item of document.getElementById('fileInput').files) {
+        if (item.type.startsWith('image/')) {
+            const pathArray = item.webkitRelativePath.split('/');
+            const fileName = pathArray.pop();
+            const folderPath = pathArray.join('/');
+
+            promises.push(processFile(item, folderPath, fileName));
+        }
+    }
+
+    // Wait for all promises to be resolved before generating and downloading the zip file
+    Promise.all(promises)
+        .then(() => {
+            return zip.generateAsync({ type: 'blob' });
+        })
+        .then((blob) => {
+            const zipFileName = 'converted_images.zip';
+            const downloadLink = document.createElement('a');
+            downloadLink.href = URL.createObjectURL(blob);
+            downloadLink.download = zipFileName;
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+
+            // Clear the outputDiv after download
+            document.getElementById('output').innerHTML = '';
+            hideLoading(); // Hide loading indicator
+        })
+        .catch((error) => {
+            console.error('Error creating zip file:', error);
+            hideLoading(); // Hide loading indicator in case of an error
+        });
+}
+
+function dataURLToUint8Array(dataURL) {
+    const base64String = dataURL.split(',')[1];
+    const byteCharacters = atob(base64String);
+    const byteArray = new Uint8Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+        byteArray[i] = byteCharacters.charCodeAt(i);
+    }
+    return byteArray;
+}
+</script>
+
+</body>
+</html>
